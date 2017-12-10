@@ -1,8 +1,10 @@
+//---------------------------------------------- Game Framework
+
 class Utilities {
     static get_JSON(url) {
         try {
             if ((typeof (url) !== "string"))
-                throw "getJSONFile: parameter not a string";
+                throw "get_JSON: parameter not a string";
             else {
                 var http_request = new XMLHttpRequest();
                 http_request.open("GET", url, false);
@@ -18,11 +20,29 @@ class Utilities {
             }
         } catch (e) { console.log(e); return null; }
     }
+
+    static get_File(url) {
+        try {
+            if ((typeof (url) !== "string"))
+                throw "get_File: parameter not a string";
+            else {
+                var http_request = new XMLHttpRequest();
+                http_request.open("GET", url, false);
+                http_request.send(null);
+                var startTime = Date.now();
+                while ((http_request.status !== 200) && (http_request.readyState !== XMLHttpRequest.DONE))
+                    if ((Date.now() - startTime) > 3000)
+                        break;
+                if ((http_request.status !== 200) || (http_request.readyState !== XMLHttpRequest.DONE))
+                    throw "Unable to acquire file!";
+                else
+                    return http_request.response;
+            }
+        } catch (e) { console.log(e); return null; }
+    }
 }
 
-//---------------------------------------------- Missile Command
-
-class Missile_Command {
+class Game_Base {
     constructor(framerate, plane_z) {
         this.background_canvas = null;
         this.background_context = null;
@@ -60,15 +80,14 @@ class Missile_Command {
         this.modulationULoc = null;
         this.textureULoc = null;
         this.pvMatrix = null;
-        this.test_sprite = null;
     }
 
     start() {
-        // try {
+        try {
         this.init();
         this.load();
         this.start_loop();
-        // } catch (e) { console.log(e); }
+        } catch (e) { console.log(e); }
     }
 
     stop() {
@@ -126,6 +145,7 @@ class Missile_Command {
                 vec4 vWorldPos4 = umMatrix * vec4(aVertexPosition, 1.0);
                 vWorldPos = vec3(vWorldPos4.x,vWorldPos4.y,vWorldPos4.z);
                 gl_Position = upvmMatrix * vec4(aVertexPosition, 1.0);
+                gl_Position.x = -gl_Position.x;
                 vec4 vWorldNormal4 = umMatrix * vec4(aVertexNormal, 0.0);
                 vVertexUV = aVertexUV;
                 vVertexNormal = normalize(vec3(vWorldNormal4.x,vWorldNormal4.y,vWorldNormal4.z)); 
@@ -254,12 +274,10 @@ class Missile_Command {
     load() {
         var background_image = new Image(), t = this;
         background_image.crossOrigin = "Anonymous";
-        background_image.src = "background_example.jpg";
+        background_image.src = "sky-2048.jpg";
         background_image.onload = function () { t.background_context.drawImage(background_image, 0, 0, background_image.width, background_image.height, 0, 0, t.background_canvas.width, t.background_canvas.height); }
         this.gl.clearDepth(1.0);
         this.gl.enable(this.gl.DEPTH_TEST);
-        var test = new Test_Sprite();
-        this.test_sprite = test;
     }
 
     add_level(level_load_function) {
@@ -279,7 +297,6 @@ class Missile_Command {
             this.restart_flag = false;
             this.restart();
         }
-        this.test_sprite.update();
     }
 
     draw() {
@@ -292,7 +309,6 @@ class Missile_Command {
         mat4.lookAt(vMatrix, this.camera_position, look_point, this.camera_up);
         mat4.multiply(this.pvMatrix, this.pvMatrix, pMatrix);
         mat4.multiply(this.pvMatrix, this.pvMatrix, vMatrix);
-        this.test_sprite.draw();
     }
 
     loop() {
@@ -318,8 +334,6 @@ class Missile_Command {
         this.loop_handle = null;
     }
 }
-
-//---------------------------------------------- Object
 
 class Game_Object {
     constructor(x, y, w, h, game) {
@@ -373,8 +387,8 @@ class Game_Object {
     }
 
     make_model_transform() {//Assuming model's front bottom left is at origin
-        var x_ratio = this.w / this.model.width;
-        var y_ratio = this.h / this.model.height;
+        var x_ratio = this.w / this.model.width; if (isNaN(x_ratio)) x_ratio = 1.0;
+        var y_ratio = this.h / this.model.height; if (isNaN(y_ratio)) y_ratio = 1.0;
         var z_ratio = x_ratio;
         var scaler = vec3.fromValues(x_ratio, y_ratio, z_ratio);
         var translation = vec3.fromValues(this.position[0] + this.w / 2 - this.model.center[0], this.position[1] + this.h / 2 - this.model.center[1], this.game.plane_z - this.model.center[2]);
@@ -479,8 +493,6 @@ class Game_Object {
     destroy() { }
 }
 
-//---------------------------------------------- Model
-
 class Model {
     constructor() {
         this.vertices = new Array();
@@ -548,19 +560,206 @@ class Model {
         model.determine_width_height_thickness();
         return model;
     }
-}
 
-//---------------------------------------------- Test Sprite
-
-class Test_Sprite extends Game_Object {
-    constructor() {
-        super(0, 0, 1.0, 1.0, missile_command);
+    static read_from_OBJ(url) {
+        var model = new Model();
+        var model_OBJ = Utilities.get_File(url).split('\n');
+        var vertex_count = 0, normal_count = 0, uv_count = 0, triangle_count = 0;
+        for (var i = 0; i < model_OBJ.length; i++) {
+            if (model_OBJ[i] === "") {
+                model_OBJ.splice(i, 1);
+                i--;
+                continue;
+            } model_OBJ[i] = model_OBJ[i].split(' ');
+            switch (model_OBJ[i][0]) {
+                case "mtllib": {
+                    var material_url = "";
+                    for (var j = 1; j < model_OBJ[i].length; j++)
+                        material_url = material_url + " " + model_OBJ[i][j];
+                    var material = this.read_material_from_MTL(material_url);
+                    model.material_ambient = material.ambient;
+                    model.material_diffuse = material.diffuse;
+                    model.material_specular = material.specular;
+                    model.material_n = material.n;
+                    model.material_alpha = material.alpha;
+                    break;
+                } case "v": {
+                    model.vertices.push({
+                        'position': vec3.fromValues(parseFloat(model_OBJ[i][1]), parseFloat(model_OBJ[i][2]), parseFloat(model_OBJ[i][3])),
+                        'normal': vec3.create(),
+                        'uv': vec2.create()
+                    }); vertex_count++;
+                    break;
+                } case "vn": {
+                    if (normal_count >= vertex_count)
+                        throw "Non-standard .obj file error.";
+                    vec3.set(model.vertices[normal_count].normal, parseFloat(model_OBJ[i][1]), parseFloat(model_OBJ[i][2]), parseFloat(model_OBJ[i][3]));
+                    normal_count++;
+                    break;
+                } case "vt": {
+                    if (uv_count >= vertex_count)
+                        throw "Non-standard .obj file error.";
+                    vec2.set(model.vertices[uv_count].uv, parseFloat(model_OBJ[i][1]), parseFloat(model_OBJ[i][2]));
+                    uv_count++;
+                    break;
+                } case "f": {
+                    for (var j = 1; j < model_OBJ[i].length; j++) {
+                        model_OBJ[i][j] = model_OBJ[i][j].split('\/');
+                        for (var k = 0; k < model_OBJ[i][j].length; k++)
+                            model_OBJ[i][j][k] = parseInt(model_OBJ[i][j][k]);
+                        if (model_OBJ[i][j][0] != model_OBJ[i][j][1])
+                            model.vertices[model_OBJ[i][j][0] - 1].uv = vec2.clone(model.vertices[model_OBJ[i][j][2] - 1].uv);
+                        if (model_OBJ[i][j][0] != model_OBJ[i][j][2])
+                            model.vertices[model_OBJ[i][j][0] - 1].normal = vec3.clone(model.vertices[model_OBJ[i][j][2] - 1].normal);
+                    }
+                    for (var j = 1; j <= model_OBJ[i].length - 3; j++) {
+                        model.triangles.push([model_OBJ[i][j][0] - 1, model_OBJ[i][j + 1][0] - 1, model_OBJ[i][j + 2][0] - 1]);
+                        triangle_count++;
+                    }
+                    break;
+                }
+            }
+        }
+        model.texture_url = "";
+        model.determine_width_height_thickness();
+        return model;
     }
 
-    load_model() { this.model = Model.read_from_JSON("model_example.json"); }
+    static read_material_from_MTL(url) {
+        var material_MTL = Utilities.get_File(url).split('\n');
+        var material = { 'ambient': vec3.create(), 'diffuse': vec3.create(), 'specular': vec3.create(), 'n': 1, 'alpha': 1 };
+        for (var i = 0; i < material_MTL.length; i++) {
+            if (material_MTL[i] === "") {
+                material_MTL.splice(i, 1);
+                i--;
+                continue;
+            } material_MTL[i] = material_MTL[i].split(' ');
+            switch (material_MTL[i][0]) {
+                case "Ka": {
+                    vec3.set(material.ambient, parseFloat(material_MTL[i][1]), parseFloat(material_MTL[i][2]), parseFloat(material_MTL[i][3]));
+                    break;
+                } case "Kd": {
+                    vec3.set(material.diffuse, parseFloat(material_MTL[i][1]), parseFloat(material_MTL[i][2]), parseFloat(material_MTL[i][3]));
+                    break;
+                } case "Ks": {
+                    vec3.set(material.specular, parseFloat(material_MTL[i][1]), parseFloat(material_MTL[i][2]), parseFloat(material_MTL[i][3]));
+                    break;
+                } case "Ni": {
+                    material.n = parseFloat(material_MTL[i][1]);
+                    break;
+                }
+            }
+        }
+        return material;
+    }
+}
+
+//---------------------------------------------- Test Game
+
+class Missile_Command extends Game_Base {
+    constructor(framerate, plane_z) {
+        super(framerate, plane_z);
+        this.ground = null;
+        this.missile_base_1 = null;
+        this.missile_base_2 = null;
+        this.missile_base_3 = null;
+        this.area_of_game = null;
+        this.debug = false;
+    }
+
+    load() {
+        super.load();
+        this.ground = new Ground();
+        this.missile_base_1 = new Missile_Base(1 / 3 * 0.2, 0, 1 / 3 * 0.6, 1 / 3 * 0.6 * 0.618 / 2);
+        this.missile_base_2 = new Missile_Base(1 / 3 * (1 + 0.2), 0, 1 / 3 * 0.6, 1 / 3 * 0.6 * 0.618 / 2);
+        this.missile_base_3 = new Missile_Base(1 / 3 * (2 + 0.2), 0, 1 / 3 * 0.6, 1 / 3 * 0.6 * 0.618 / 2);
+        this.area_of_game = new AoG();
+    }
+
+    update() {
+        super.update();
+        this.ground.update();
+        this.missile_base_1.update();
+        this.missile_base_2.update();
+        this.missile_base_3.update();
+        if (this.debug) this.area_of_game.update();
+    }
+
+    draw() {
+        super.draw();
+        this.ground.draw();
+        this.missile_base_1.draw();
+        this.missile_base_2.draw();
+        this.missile_base_3.draw();
+        if (this.debug) this.area_of_game.draw();
+    }
+}
+
+class Missile_Base extends Game_Object {
+    constructor(x, y, w, h) {
+        super(x, y, w, h, missile_command);
+    }
+
+    load_model() {
+        this.model = Model.read_from_OBJ("missile base.obj");
+        this.model.texture_url = "grass-512.png";
+    }
+}
+
+class Ground extends Game_Object {
+    constructor() {
+        const width=4;
+        super(-(width-1)/2, -0.0001, width, 0, missile_command);
+    }
+
+    load_model() {
+        this.model = Model.read_from_OBJ("ground.obj");
+        this.model.texture_url = "grass-2048.png";
+    }
+}
+
+class AoG extends Game_Object {
+    constructor() {
+        super(0, 0, 1, 1, missile_command);
+    }
+
+    load_model() {
+        this.model = Model.make_procedurally(AoG.make_model);
+    }
+
+    static make_model(model) {
+        model.vertices.push({
+            'position': vec3.fromValues(0, 0, 0),
+            'normal': vec3.fromValues(0, 0, -1),
+            'uv': vec2.fromValues(1 - 0, 1 - 0)
+        });
+        model.vertices.push({
+            'position': vec3.fromValues(0, 1, 0),
+            'normal': vec3.fromValues(0, 0, -1),
+            'uv': vec2.fromValues(1 - 0, 1 - 1)
+        });
+        model.vertices.push({
+            'position': vec3.fromValues(1, 1, 0),
+            'normal': vec3.fromValues(0, 0, -1),
+            'uv': vec2.fromValues(1 - 1, 1 - 1)
+        });
+        model.vertices.push({
+            'position': vec3.fromValues(1, 0, 0),
+            'normal': vec3.fromValues(0, 0, -1),
+            'uv': vec2.fromValues(1 - 1, 1 - 0)
+        });
+        model.triangles.push([0, 1, 2], [2, 3, 0]);
+        model.material_ambient = vec3.fromValues(1, 1, 1);
+        model.material_diffuse = vec3.fromValues(1, 1, 1);
+        model.material_specular = vec3.fromValues(1, 1, 1);
+        model.material_n = 1;
+        model.material_alpha = 0.1;
+        model.texture_url = "";
+    }
 }
 
 //---------------------------------------------- Run
 
 var missile_command = new Missile_Command(60, 0.5);
+// missile_command.debug = true;
 missile_command.start();
