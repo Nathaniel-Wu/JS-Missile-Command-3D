@@ -1,0 +1,14 @@
+{
+    "vertices": [[0,0,0],[1.0,0,0],[0.5,0.866,0]],
+    "normals": [[0,0,-1.0],[0,0,-1.0],[0,0,-1.0]],
+    "uvs": [[1,1],[0,1],[0.5,0]],
+    "triangles": [[0,1,2]],
+    "material": {
+        "ambient": [1,1,1],
+        "diffuse": [1,1,1],
+        "specular": [1,1,1],
+        "n": 1,
+        "alpha": 1
+    },
+    "texture": "texture_example.png"
+}
