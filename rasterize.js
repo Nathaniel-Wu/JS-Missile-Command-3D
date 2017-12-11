@@ -721,7 +721,7 @@ function onMouseDown(event) {
 }
 
 const missile_per_base = 10;
-const total_hostile_missile_number = 20;
+const total_hostile_missile_number = 15;
 class Missile_Command extends Game_Base {
     constructor(framerate, plane_z) {
         super(framerate, plane_z);
@@ -780,6 +780,30 @@ class Missile_Command extends Game_Base {
                 this.missile_base_missiles[i][j].update();
         for (var i = 0; i < this.launched_missiles.length; i++)
             this.launched_missiles[i].update();
+        if (this.hostile_missiles.length > 0 && Math.random() < (1 / (this.framerate * 10))) {
+            var t = this;
+            function random_index() { return Math.floor(Math.random() * (t.hostile_missiles.length - 1)); }
+            function validate_index(index) { return (0.5 <= t.hostile_missiles[index].position[1]) && (t.hostile_missiles[index].position[1] <= 1.2); }
+            function all_invalid() {
+                var res = true;
+                for (var i = 0; i < t.hostile_missiles.length; i++)
+                    if (validate_index(i)) {
+                        res = false;
+                        break;
+                    }
+                return res;
+            }
+            if (!all_invalid()) {
+                var launched = false;
+                while (!launched) {
+                    var index = random_index();
+                    if (validate_index(index)) {
+                        this.hostile_missiles[index].split();
+                        launched = true;
+                    }
+                }
+            }
+        }
         for (var i = 0; i < this.hostile_missiles.length; i++)
             this.hostile_missiles[i].update();
         for (var i = 0; i < this.missile_base_missiles.length; i++)
@@ -837,6 +861,10 @@ class Missile_Command extends Game_Base {
             }
         }
         var base_index = Math.floor(position_vec2[0] / (1 / 3));
+        if (base_index > 2)
+            base_index = 2;
+        else if (base_index < 0)
+            base_index = 0;
         try_base(base_index);
         if (!launched)
             for (var i = 0; i < t.missile_base_missiles.length; i++) {
@@ -976,6 +1004,17 @@ class Hostile_Missile extends Missile {
         super(x, y);
         this.speed /= 4;
         this.target_base_index = null;
+    }
+
+    split() {
+        for (var i = 0; i < this.game.missile_bases.length; i++)
+            if (i != this.target_base_index) {
+                var hostile_missile = new Hostile_Missile(this.position[0], this.position[1]);
+                var target = vec2.fromValues(this.game.missile_bases[i].position[0] + this.game.missile_bases[i].w * 0.5, this.game.missile_bases[i].position[1] + this.game.missile_bases[i].h * 0.8);
+                hostile_missile.launch(target);
+                hostile_missile.target_base_index = i;
+                this.game.hostile_missiles.push(hostile_missile);
+            }
     }
 
     post_update() {
