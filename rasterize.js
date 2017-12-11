@@ -42,6 +42,10 @@ class Utilities {
     }
 }
 
+var loop_count = 0;
+var frame_time_sum = 0;
+var frame_time_max = -1;
+var frame_time_min = 1000;
 class Game_Base {
     constructor(framerate, plane_z) {
         this.background_canvas = null;
@@ -80,14 +84,15 @@ class Game_Base {
         this.modulationULoc = null;
         this.textureULoc = null;
         this.pvMatrix = null;
+        this.frame_time_log = false;
     }
 
     start() {
-        try {
+        // try {
         this.init();
         this.load();
         this.start_loop();
-        } catch (e) { console.log(e); }
+        // } catch (e) { console.log(e); }
     }
 
     stop() {
@@ -318,6 +323,21 @@ class Game_Base {
         }
         this.update();
         this.draw();
+        if (this.frame_time_log) {
+            frame_time = (new Date()).getTime() - frame_time;
+            if (frame_time < frame_time_min)
+                frame_time_min = frame_time;
+            if (frame_time > frame_time_max)
+                frame_time_max = frame_time;
+            frame_time_sum += frame_time;
+            if (loop_count >= this.framerate) {
+                console.log("max frame time: " + frame_time_max + "ms; min frame time: " + frame_time_min + "ms; average: " + frame_time_sum / 60 + "ms");
+                loop_count = 0;
+                frame_time_sum = 0;
+                frame_time_max = -1;
+                frame_time_min = 1000;
+            }
+        }
     }
 
     start_loop() {
@@ -347,6 +367,7 @@ class Game_Object {
         this.w = w;
         this.h = h;
         this.moveVect = null;
+        this.destroyed = false;
         //3D rendering
         this.vertexBuffer = this.game.gl.createBuffer();
         this.normalBuffer = this.game.gl.createBuffer();
@@ -360,6 +381,7 @@ class Game_Object {
         this.scaler = null;
         this.xAxis = vec3.fromValues(1.0, 0.0, 0.0);
         this.yAxis = vec3.fromValues(0.0, 1.0, 0.0);
+        this.rotate_2d_rad = 0;
         this.translation = vec3.create();
     }
 
@@ -413,36 +435,40 @@ class Game_Object {
             this.texture_index = this.game.load_texture(url);
     }
 
-    translate(translation_vec3) {
+    translate(translation_vec3) {//2D position changes as well
         vec3.add(this.translation, this.translation, translation_vec3);
     }
 
-    rotate(axis_vec3, rad) {//Counter-clockwise
+    rotate(axis_vec3, rad) {//Counter-clockwise, and 2D position doesn't change
         var rotation_transform = mat4.create();
         mat4.fromRotation(rotation_transform, rad, axis_vec3);
         vec3.transformMat4(this.xAxis, this.xAxis, rotation_transform);
         vec3.transformMat4(this.yAxis, this.yAxis, rotation_transform);
     }
 
-    rotate_2d(rad) {//Counter-clockwise
+    rotate_2d(rad) {//Counter-clockwise, and 2D position doesn't change
         this.rotate(vec3.fromValues(0.0, 0.0, -1.0), rad);
+        this.rotate_2d_rad += rad;
     }
 
-    scale(scaler_vec3) {
-        this.scaler = scaler_vec3;
+    scale(scaler_vec3) {//2D position doesn't change, only use when the object is about to be destroyed
+        if (this.scaler == null)
+            this.scaler = vec3.clone(scaler_vec3);
+        else
+            vec3.multiply(this.scaler, scaler_vec3, this.scaler);
     }
 
     make_transform() {//Scales then rotates by center, lastly do translation.
         var zAxis = vec3.create(); vec3.normalize(zAxis, vec3.cross(zAxis, this.xAxis, this.yAxis));
-        var center = this.center_vec3(), negate_center = vec3.create();
-        this.transform = mat4.create(); mat4.fromTranslation(this.transform, vec3.negate(negate_center, center));
-        var rotation_transform = mat4.create(), cache_mat4 = mat4.create();
-        if (this.scalers)
+        var center = this.center_vec3(), negate_center = vec3.create(), cache_mat4 = mat4.create();
+        var rotation_transform = mat4.create(); mat4.set(rotation_transform, this.xAxis[0], this.yAxis[0], zAxis[0], 0, this.xAxis[1], this.yAxis[1], zAxis[1], 0, this.xAxis[2], this.yAxis[2], zAxis[2], 0, 0, 0, 0, 1);
+        this.transform = mat4.create();
+        mat4.multiply(this.transform, mat4.fromTranslation(cache_mat4, this.translation), this.transform);
+        mat4.multiply(this.transform, mat4.fromTranslation(cache_mat4, vec3.negate(negate_center, center)), this.transform);
+        if (this.scaler != null)
             mat4.multiply(this.transform, mat4.fromScaling(cache_mat4, this.scaler), this.transform);
-        mat4.set(rotation_transform, this.xAxis[0], this.yAxis[0], zAxis[0], 0, this.xAxis[1], this.yAxis[1], zAxis[1], 0, this.xAxis[2], this.yAxis[2], zAxis[2], 0, 0, 0, 0, 1);
         mat4.multiply(this.transform, rotation_transform, this.transform);
         mat4.multiply(this.transform, mat4.fromTranslation(cache_mat4, center), this.transform);
-        mat4.multiply(this.transform, mat4.fromTranslation(cache_mat4, this.translation), this.transform);
     }
 
     move(move_vec2) {
@@ -490,7 +516,9 @@ class Game_Object {
         this.game.gl.drawElements(this.game.gl.TRIANGLES, 3 * this.triangle_count, this.game.gl.UNSIGNED_SHORT, 0);
     }
 
-    destroy() { }
+    destroy() {
+        this.destroyed = true;
+    }
 }
 
 class Model {
@@ -590,16 +618,23 @@ class Model {
                         'uv': vec2.create()
                     }); vertex_count++;
                     break;
-                } case "vn": {
-                    if (normal_count >= vertex_count)
-                        throw "Non-standard .obj file error.";
-                    vec3.set(model.vertices[normal_count].normal, parseFloat(model_OBJ[i][1]), parseFloat(model_OBJ[i][2]), parseFloat(model_OBJ[i][3]));
+                }
+            }
+        }
+        for (var i = 0; i < model_OBJ.length; i++) {
+            switch (model_OBJ[i][0]) {
+                case "vn": {
+                    if (normal_count >= vertex_count) {
+                        model.vertices.push({ 'position': vec3.create(), 'normal': vec3.create(), 'uv': vec2.create() });
+                        vertex_count++;
+                    } vec3.set(model.vertices[normal_count].normal, parseFloat(model_OBJ[i][1]), parseFloat(model_OBJ[i][2]), parseFloat(model_OBJ[i][3]));
                     normal_count++;
                     break;
                 } case "vt": {
-                    if (uv_count >= vertex_count)
-                        throw "Non-standard .obj file error.";
-                    vec2.set(model.vertices[uv_count].uv, parseFloat(model_OBJ[i][1]), parseFloat(model_OBJ[i][2]));
+                    if (uv_count >= vertex_count) {
+                        model.vertices.push({ 'position': vec3.create(), 'normal': vec3.create(), 'uv': vec2.create() });
+                        vertex_count++;
+                    } vec2.set(model.vertices[uv_count].uv, parseFloat(model_OBJ[i][1]), parseFloat(model_OBJ[i][2]));
                     uv_count++;
                     break;
                 } case "f": {
@@ -654,15 +689,16 @@ class Model {
     }
 }
 
-//---------------------------------------------- Test Game
+//---------------------------------------------- Actual Game
 
+const missile_per_base = 10;
 class Missile_Command extends Game_Base {
     constructor(framerate, plane_z) {
         super(framerate, plane_z);
         this.ground = null;
-        this.missile_base_1 = null;
-        this.missile_base_2 = null;
-        this.missile_base_3 = null;
+        this.missile_bases = new Array();
+        this.missile_base_missiles = new Array();
+        this.hostile_missiles = new Array();
         this.area_of_game = null;
         this.debug = false;
     }
@@ -670,27 +706,53 @@ class Missile_Command extends Game_Base {
     load() {
         super.load();
         this.ground = new Ground();
-        this.missile_base_1 = new Missile_Base(1 / 3 * 0.2, 0, 1 / 3 * 0.6, 1 / 3 * 0.6 * 0.618 / 2);
-        this.missile_base_2 = new Missile_Base(1 / 3 * (1 + 0.2), 0, 1 / 3 * 0.6, 1 / 3 * 0.6 * 0.618 / 2);
-        this.missile_base_3 = new Missile_Base(1 / 3 * (2 + 0.2), 0, 1 / 3 * 0.6, 1 / 3 * 0.6 * 0.618 / 2);
+        this.missile_bases.push(new Missile_Base(1 / 3 * 0.1, 0, 1 / 3 * 0.8, 1 / 3 * 0.6 * 0.618 / 2));
+        this.missile_bases.push(new Missile_Base(1 / 3 * (1 + 0.1), 0, 1 / 3 * 0.8, 1 / 3 * 0.6 * 0.618 / 2));
+        this.missile_bases.push(new Missile_Base(1 / 3 * (2 + 0.1), 0, 1 / 3 * 0.8, 1 / 3 * 0.6 * 0.618 / 2));
+        for (var i = 0; i < this.missile_bases.length; i++) {
+            this.missile_base_missiles.push(new Array());
+            var x = this.missile_bases[i].position[0] + this.missile_bases[i].w * 0.2, y = this.missile_bases[i].position[1] + this.missile_bases[i].h * 0.95;
+            var delta_x = this.missile_bases[i].w * 0.6 / (missile_per_base - 1);
+            for (var j = 0; j < missile_per_base; j++)
+                this.missile_base_missiles[i].push(new Missile(x + j * delta_x, y));
+        }
         this.area_of_game = new AoG();
     }
 
     update() {
         super.update();
         this.ground.update();
-        this.missile_base_1.update();
-        this.missile_base_2.update();
-        this.missile_base_3.update();
+        for (var i = 0; i < this.missile_bases.length; i++)
+            this.missile_bases[i].update();
+        for (var i = 0; i < this.missile_base_missiles.length; i++)
+            for (var j = 0; j < this.missile_base_missiles[i].length; j++)
+                this.missile_base_missiles[i][j].update();
+        for (var i = 0; i < this.hostile_missiles.length; i++)
+            this.hostile_missiles[i].update();
+        for (var i = 0; i < this.missile_base_missiles.length; i++)
+            for (var j = 0; j < this.missile_base_missiles[i].length; j++)
+                if (this.missile_base_missiles[i][j].destroyed) {
+                    this.missile_base_missiles[i].splice(j, 1); j--;
+                    continue;
+                }
+        for (var i = 0; i < this.hostile_missiles.length; i++)
+            if (this.hostile_missiles[i].destroyed) {
+                this.hostile_missiles.splice(i, 1); i--;
+                continue;
+            }
         if (this.debug) this.area_of_game.update();
     }
 
     draw() {
         super.draw();
         this.ground.draw();
-        this.missile_base_1.draw();
-        this.missile_base_2.draw();
-        this.missile_base_3.draw();
+        for (var i = 0; i < this.missile_bases.length; i++)
+            this.missile_bases[i].draw();
+        for (var i = 0; i < this.missile_base_missiles.length; i++)
+            for (var j = 0; j < this.missile_base_missiles[i].length; j++)
+                this.missile_base_missiles[i][j].draw();
+        for (var i = 0; i < this.hostile_missiles.length; i++)
+            this.hostile_missiles[i].draw();
         if (this.debug) this.area_of_game.draw();
     }
 }
@@ -706,10 +768,130 @@ class Missile_Base extends Game_Object {
     }
 }
 
+class Missile extends Game_Object {
+    constructor(x, y) {
+        super(x, y, 0.0125, 0.05, missile_command);
+        this.speed = 0.1;
+        this.launch_target = null;
+        this.after_launch_move_vec2 = null;
+        this.exploded = false;
+        this.explode_scaler = null;
+    }
+
+    update() {
+        if (this.after_launch_move_vec2 != null)
+            this.move(this.after_launch_move_vec2);
+        else if (this.exploded)
+            this.scale(this.explode_scaler);
+        super.update();
+        this.post_update();
+    }
+
+    post_update() {
+        if (this.after_launch_move_vec2 != null) {
+            var delta = vec2.create(); vec2.subtract(delta, this.launch_target, vec2.fromValues(this.position[0], this.position[1]));
+            var delta_distance = vec2.length(delta);
+            if (delta_distance <= this.h * 1.1)
+                this.explode();
+        } else if (this.exploded) {
+            if (this.scaler[0] >= 2)
+                this.destroy();
+        }
+    }
+
+    draw() {
+        if (!this.destroyed)
+            super.draw();
+    }
+
+    load_model() {
+        this.model = Model.read_from_OBJ("missile.obj");
+        this.model.texture_url = "blue.png";
+    }
+
+    launch(position_vec2) {
+        this.launch_target = vec2.clone(position_vec2);
+        var delta = vec2.create(); vec2.subtract(delta, position_vec2, vec2.fromValues(this.position[0], this.position[1]));
+        var delta_distance = vec2.length(delta);
+        this.after_launch_move_vec2 = vec2.fromValues(this.speed / this.game.framerate * delta[0] / delta_distance, this.speed / this.game.framerate * delta[1] / delta_distance);
+        var tan = delta[0] / delta[1];
+        if (!isNaN(tan))
+            this.rotate_2d(-Math.atan(tan));
+        else
+            console.log("Invalid target");
+    }
+
+    pre_explode() {
+        this.model = Model.read_from_OBJ("ball.obj");
+        this.model.texture_url = "yellow.png";
+    }
+
+    explode() {
+        this.pre_explode();
+        var explode_ratio = Math.pow(2, 1 / (3 * this.game.framerate));
+        this.explode_scaler = vec3.fromValues(explode_ratio, explode_ratio, explode_ratio);
+        this.launch_target = null;
+        this.after_launch_move_vec2 = null;
+        this.w = this.h;
+        this.fill_buffers(); this.attatch_texture(this.model.texture_url);
+        this.model_transform = null; this.make_model_transform();
+        this.transform = null;
+        this.scaler = null;
+        this.xAxis = vec3.fromValues(1.0, 0.0, 0.0);
+        this.yAxis = vec3.fromValues(0.0, 1.0, 0.0);
+        this.translation = vec3.create();
+        this.exploded = true;
+        if (this.rotate_2d_rad > 0) {
+            this.move(vec2.fromValues(-this.w, 0));
+            super.update();
+        }
+    }
+
+    destroy() {
+        super.destroy();
+        this.exploded = false;
+    }
+}
+
+class Hostile_Missile extends Missile {
+    constructor(x, y) {
+        super(x, y);
+        this.speed = this.speed / 2;
+    }
+
+    post_update() {
+        if (this.exploded) {
+            if (this.scaler[0] >= 2)
+                this.destroy();
+        } else if (this.after_launch_move_vec2 != null) {
+            var in_explosion_vicinity = false
+            //check if in vicinity
+            if (in_explosion_vicinity)
+                this.explode();
+            else {
+                var delta = vec2.create(); vec2.subtract(delta, this.launch_target, vec2.fromValues(this.position[0], this.position[1]));
+                var delta_distance = vec2.length(delta);
+                if (delta_distance <= this.h * 1.1)
+                    this.explode();
+            }
+        }
+    }
+
+    load_model() {
+        this.model = Model.read_from_OBJ("hostile missile.obj");
+        this.model.texture_url = "red.png";
+    }
+
+    pre_explode() {
+        this.model = Model.read_from_OBJ("ball.obj");
+        this.model.texture_url = "red.png";
+    }
+}
+
 class Ground extends Game_Object {
     constructor() {
-        const width=4;
-        super(-(width-1)/2, -0.0001, width, 0, missile_command);
+        const width = 4;
+        super(-(width - 1) / 2, -0.0001, width, 0, missile_command);
     }
 
     load_model() {
@@ -761,5 +943,6 @@ class AoG extends Game_Object {
 //---------------------------------------------- Run
 
 var missile_command = new Missile_Command(60, 0.5);
+missile_command.frame_time_log = true;
 // missile_command.debug = true;
 missile_command.start();
