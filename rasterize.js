@@ -52,6 +52,8 @@ class Game_Base {
     constructor(framerate, plane_z) {
         this.background_canvas = null;
         this.background_context = null;
+        this.background_image = null;
+        this.background_image_loaded = false;
         this.gl_canvas = null;
         this.gl = null;
         this.canvas_x = 0;
@@ -279,10 +281,11 @@ class Game_Base {
     }
 
     load() {
-        var background_image = new Image(), t = this;
-        background_image.crossOrigin = "Anonymous";
-        background_image.src = "textures/sky-2048.jpg";
-        background_image.onload = function () { t.background_context.drawImage(background_image, 0, 0, background_image.width, background_image.height, 0, 0, t.background_canvas.width, t.background_canvas.height); }
+        this.background_image = new Image();
+        var t = this;
+        this.background_image.crossOrigin = "Anonymous";
+        this.background_image.src = "textures/sky-2048.jpg";
+        this.background_image.onload = function () { t.background_image_loaded = true; }
         this.gl.clearDepth(1.0);
         this.gl.enable(this.gl.DEPTH_TEST);
     }
@@ -297,7 +300,10 @@ class Game_Base {
         this.level_load_functions[index]();
     }
 
-    deload() { }
+    deload() {
+        this.background_image = null;
+        this.background_image_loaded = false;
+    }
 
     update() {
         if (this.restart_flag) {
@@ -307,6 +313,8 @@ class Game_Base {
     }
 
     draw() {
+        this.background_context.clearRect(0, 0, this.background_canvas.width, this.background_canvas.height);
+        this.background_context.drawImage(this.background_image, 0, 0, this.background_image.width, this.background_image.height, 0, 0, this.background_canvas.width, this.background_canvas.height);
         var pMatrix = mat4.create();
         var vMatrix = mat4.create();
         this.pvMatrix = mat4.create();
@@ -734,6 +742,7 @@ class Missile_Command extends Game_Base {
         this.droped_missile_count = 0;
         this.area_of_game = null;
         this.debug = false;
+        this.score = 0;
     }
 
     load() {
@@ -754,9 +763,11 @@ class Missile_Command extends Game_Base {
         }
         this.droped_missile_count = 0;
         this.area_of_game = new AoG();
+        this.score = 0;
     }
 
     deload() {
+        super.deload();
         this.ground = null;
         this.missile_bases = new Array();
         this.missile_base_survival = new Array();
@@ -766,6 +777,7 @@ class Missile_Command extends Game_Base {
         this.droped_missile_count = 0;
         this.area_of_game = null;
         this.debug = false;
+        this.score = 0;
     }
 
     update() {
@@ -845,6 +857,12 @@ class Missile_Command extends Game_Base {
         for (var i = 0; i < this.hostile_missiles.length; i++)
             this.hostile_missiles[i].draw();
         if (this.debug) this.area_of_game.draw();
+        this.background_context.beginPath();
+        this.background_context.font = "40px Helvetica";
+        this.background_context.fillStyle = 'black';
+        this.background_context.textAlign = 'center';
+        this.background_context.textBaseline = 'middle';
+        this.background_context.fillText("Your Score: " + this.score * 100, 100 + 100 / 2, 20 + 30 / 2);
     }
 
     launch(position_vec2) {
@@ -915,7 +933,7 @@ class Missile_Base extends Game_Object {
 class Missile extends Game_Object {
     constructor(x, y) {
         super(x, y, 0.0125, 0.05, missile_command);
-        this.speed = 0.1;
+        this.speed = 0.2;
         this.launch_target = null;
         this.after_launch_move_vec2 = null;
         this.exploded = false;
@@ -1034,9 +1052,10 @@ class Hostile_Missile extends Missile {
                     }
                 }
             }
-            if (in_explosion_vicinity)
+            if (in_explosion_vicinity) {
                 this.explode();
-            else {
+                this.game.score++;
+            } else {
                 var delta = vec2.create(); vec2.subtract(delta, this.launch_target, vec2.fromValues(this.position[0], this.position[1]));
                 var delta_distance = vec2.length(delta);
                 if (delta_distance <= this.h * 1.1) {
@@ -1116,6 +1135,6 @@ class AoG extends Game_Object {
 //---------------------------------------------- Run
 
 var missile_command = new Missile_Command(60, 0.5);
-// missile_command.frame_time_log = true;
+missile_command.frame_time_log = true;
 // missile_command.debug = true;
 missile_command.start();
