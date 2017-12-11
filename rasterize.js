@@ -827,7 +827,7 @@ class Missile_Command extends Game_Base {
         if (this.UFO != null)
             this.UFO.update();
         else if (this.UFO_spawned < 2 && Math.random() < (1 / (this.framerate * 10))) {
-            this.UFO = new UFO(0, 0.6, 0.1, 0.03);
+            this.UFO = new UFO(-1, 0.6, 0.1, 0.03);
             this.UFO.update();
             this.UFO_spawned++;
         }
@@ -849,10 +849,10 @@ class Missile_Command extends Game_Base {
             }
         if (this.debug) this.area_of_game.update();
         if (this.survived_missile_base_count() == 0) {
-            alert("You lost");
+            alert("You Lost!");
             this.restart_flag = true;
         } else if (this.droped_missile_count >= total_hostile_missile_number && this.hostile_missiles.length == 0) {
-            alert("You Win");
+            alert("You Win!");
             this.restart_flag = true;
         }
     }
@@ -877,7 +877,7 @@ class Missile_Command extends Game_Base {
         this.background_context.fillStyle = 'black';
         this.background_context.textAlign = 'center';
         this.background_context.textBaseline = 'middle';
-        this.background_context.fillText("Your Score: " + this.score * 100, 100 + 100 / 2, 20 + 30 / 2);
+        this.background_context.fillText("Your Score: " + this.score * 100, 120 + 100 / 2, 20 + 30 / 2);
     }
 
     launch(position_vec2) {
@@ -1133,6 +1133,8 @@ class UFO extends Game_Object {
                 }
             }
         }
+        if (this.position[0] > 2)
+            this.game.UFO = null;
     }
 }
 
