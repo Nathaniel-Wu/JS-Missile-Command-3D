@@ -281,7 +281,7 @@ class Game_Base {
     load() {
         var background_image = new Image(), t = this;
         background_image.crossOrigin = "Anonymous";
-        background_image.src = "sky-2048.jpg";
+        background_image.src = "textures/sky-2048.jpg";
         background_image.onload = function () { t.background_context.drawImage(background_image, 0, 0, background_image.width, background_image.height, 0, 0, t.background_canvas.width, t.background_canvas.height); }
         this.gl.clearDepth(1.0);
         this.gl.enable(this.gl.DEPTH_TEST);
@@ -603,9 +603,19 @@ class Model {
             } model_OBJ[i] = model_OBJ[i].split(' ');
             switch (model_OBJ[i][0]) {
                 case "mtllib": {
-                    var material_url = "";
+                    var relative_url;
+                    for (var j = url.length - 1; j >= 0; j--)
+                        if (url.charAt(j) === '\/') {
+                            relative_url = url.slice(0, j + 1);
+                            break;
+                        }
+                    var material_url;
                     for (var j = 1; j < model_OBJ[i].length; j++)
-                        material_url = material_url + " " + model_OBJ[i][j];
+                        if (j == 1)
+                            material_url = model_OBJ[i][j];
+                        else
+                            material_url = material_url + " " + model_OBJ[i][j];
+                    material_url = relative_url + material_url;
                     var material = this.read_material_from_MTL(material_url);
                     model.material_ambient = material.ambient;
                     model.material_diffuse = material.diffuse;
@@ -865,8 +875,12 @@ class Missile_Base extends Game_Object {
     }
 
     load_model() {
-        this.model = Model.read_from_OBJ("missile base.obj");
-        this.model.texture_url = "dirt-512.png";
+        this.model = Model.read_from_OBJ("models/missile base.obj");
+        this.model.texture_url = "textures/dirt-512.png";
+    }
+
+    explode() {
+        this.attatch_texture("textures/dirt-post-explosion-512.png");
     }
 }
 
@@ -907,8 +921,8 @@ class Missile extends Game_Object {
     }
 
     load_model() {
-        this.model = Model.read_from_OBJ("missile.obj");
-        this.model.texture_url = "blue.png";
+        this.model = Model.read_from_OBJ("models/missile.obj");
+        this.model.texture_url = "textures/yellow.png";
     }
 
     launch(position_vec2) {
@@ -924,11 +938,13 @@ class Missile extends Game_Object {
     }
 
     pre_explode() {
-        this.model = Model.read_from_OBJ("ball.obj");
-        this.model.texture_url = "yellow.png";
+        this.model = Model.read_from_OBJ("models/ball.obj");
+        this.model.texture_url = "textures/yellow.png";
     }
 
     explode() {
+        if (this.exploded)
+            return;
         this.pre_explode();
         var explode_ratio = Math.pow(2, 1 / (3 * this.game.framerate));
         this.explode_scaler = vec3.fromValues(explode_ratio, explode_ratio, explode_ratio);
@@ -986,23 +1002,23 @@ class Hostile_Missile extends Missile {
                 var delta_distance = vec2.length(delta);
                 if (delta_distance <= this.h * 1.1) {
                     this.explode();
-                    for (var i = 0; i < this.game.missile_base_missiles[this.target_base_index].length; i++) {
+                    for (var i = 0; i < this.game.missile_base_missiles[this.target_base_index].length; i++)
                         this.game.missile_base_missiles[this.target_base_index][i].explode();
-                        this.game.missile_base_survival[this.target_base_index] = false;
-                    }
+                    this.game.missile_base_survival[this.target_base_index] = false;
+                    this.game.missile_bases[this.target_base_index].explode();
                 }
             }
         }
     }
 
     load_model() {
-        this.model = Model.read_from_OBJ("hostile missile.obj");
-        this.model.texture_url = "red.png";
+        this.model = Model.read_from_OBJ("models/hostile missile.obj");
+        this.model.texture_url = "textures/red.png";
     }
 
     pre_explode() {
-        this.model = Model.read_from_OBJ("ball.obj");
-        this.model.texture_url = "red.png";
+        this.model = Model.read_from_OBJ("models/ball.obj");
+        this.model.texture_url = "textures/red.png";
     }
 }
 
@@ -1013,8 +1029,8 @@ class Ground extends Game_Object {
     }
 
     load_model() {
-        this.model = Model.read_from_OBJ("ground.obj");
-        this.model.texture_url = "dirt-2048.png";
+        this.model = Model.read_from_OBJ("models/ground.obj");
+        this.model.texture_url = "textures/dirt-2048.png";
     }
 }
 
