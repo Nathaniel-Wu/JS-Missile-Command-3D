@@ -1113,6 +1113,8 @@ class UFO extends Game_Object {
     constructor(x, y, w, h) {
         super(x, y, w, h, missile_command);
         this.constant_move_vec2 = vec2.fromValues(0.1 / this.game.framerate, 0);
+        this.exploded = false;
+        this.explode_scaler = null;
     }
 
     load_model() {
@@ -1121,22 +1123,49 @@ class UFO extends Game_Object {
     }
 
     update() {
-        this.move(this.constant_move_vec2);
-        super.update();
-        for (var i = 0; i < this.game.launched_missiles.length; i++) {
-            var missile = this.game.launched_missiles[i];
-            if (missile.exploded) {
-                var delta = vec3.create(); vec3.subtract(delta, this.position, missile.position)
-                delta = vec2.fromValues(delta[0], delta[1]);
-                if (vec2.length(delta) < this.w * 1.5) {
-                    this.game.UFO = null;
-                    this.game.score += 10;
-                    break;
+        if (this.exploded) {
+            this.scale(this.explode_scaler);
+            if (this.scaler[0] >= 1.5) {
+                this.game.UFO = null;
+                this.game.score += 10;
+            }
+        } else {
+            this.move(this.constant_move_vec2);
+            super.update();
+            for (var i = 0; i < this.game.launched_missiles.length; i++) {
+                var missile = this.game.launched_missiles[i];
+                if (missile.exploded) {
+                    var delta = vec3.create(); vec3.subtract(delta, this.position, missile.position)
+                    delta = vec2.fromValues(delta[0], delta[1]);
+                    if (vec2.length(delta) < this.w * 1.2) {
+                        this.explode();
+                        break;
+                    }
                 }
             }
+            if (this.position[0] > 2)
+                this.game.UFO = null;
         }
-        if (this.position[0] > 2)
-            this.game.UFO = null;
+    }
+
+    explode() {
+        if (this.exploded)
+            return;
+        this.model = Model.read_from_OBJ("models/ball.obj");
+        this.model.texture_url = "textures/blue.png";
+        var explode_ratio = Math.pow(2, 1 / (3 * this.game.framerate));
+        this.explode_scaler = vec3.fromValues(explode_ratio, explode_ratio, explode_ratio);
+        this.h = this.w;
+        this.fill_buffers(); this.attatch_texture(this.model.texture_url);
+        this.model_transform = null; this.make_model_transform();
+        this.transform = null;
+        this.scaler = null;
+        this.xAxis = vec3.fromValues(1.0, 0.0, 0.0);
+        this.yAxis = vec3.fromValues(0.0, 1.0, 0.0);
+        this.translation = vec3.create();
+        this.exploded = true;
+        this.move(vec2.fromValues(0, -this.h / 2));
+        super.update();
     }
 }
 
