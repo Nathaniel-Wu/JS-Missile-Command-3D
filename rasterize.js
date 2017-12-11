@@ -801,7 +801,7 @@ class Missile_Command extends Game_Base {
         if (this.hostile_missiles.length > 0 && Math.random() < (1 / (this.framerate * 10))) {
             var t = this;
             function random_index() { return Math.floor(Math.random() * (t.hostile_missiles.length - 1)); }
-            function validate_index(index) { return (0.5 <= t.hostile_missiles[index].position[1]) && (t.hostile_missiles[index].position[1] <= 1.2); }
+            function validate_index(index) { return (0.5 <= t.hostile_missiles[index].position[1]) && (t.hostile_missiles[index].position[1] <= 1.2) && (!t.hostile_missiles[index].exploded); }
             function all_invalid() {
                 var res = true;
                 for (var i = 0; i < t.hostile_missiles.length; i++)
@@ -813,7 +813,9 @@ class Missile_Command extends Game_Base {
             }
             if (!all_invalid()) {
                 var launched = false;
-                while (!launched) {
+                var try_count = 0;
+                while (!launched && try_count < 5) {
+                    try_count++;
                     var index = random_index();
                     if (validate_index(index)) {
                         this.hostile_missiles[index].split();
