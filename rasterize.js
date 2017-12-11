@@ -46,6 +46,8 @@ var loop_count = 0;
 var frame_time_sum = 0;
 var frame_time_max = -1;
 var frame_time_min = 1000;
+var canvas_x;
+var canvas_y;
 class Game_Base {
     constructor(framerate, plane_z) {
         this.background_canvas = null;
@@ -119,7 +121,7 @@ class Game_Base {
         this.background_context = this.background_canvas.getContext("2d");
         this.gl = this.gl_canvas.getContext("webgl");
         if (!this.gl) throw "WebGL not supported error.";
-        // this.gl_canvas.addEventListener("mousedown", onMouseDown);
+        this.gl_canvas.addEventListener("mousedown", onMouseDown);
         // this.gl_canvas.addEventListener("mouseup", onMouseUp);
         var camera_JSON = Utilities.get_JSON("camera.json");
         this.camera_position = vec3.fromValues(camera_JSON.position[0], camera_JSON.position[1], camera_JSON.position[2]);
@@ -310,7 +312,7 @@ class Game_Base {
         this.pvMatrix = mat4.create();
         this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
         mat4.perspective(pMatrix, this.camera_fov * Math.PI / 180, this.gl_canvas.width / this.gl_canvas.height, this.camera_near_z, this.camera_far_z);
-        var look_point = vec3.create(); vec3.add(look_point, this.camera_position, this.camera_look_at)
+        var look_point = vec3.create(); vec3.add(look_point, this.camera_position, this.camera_look_at);
         mat4.lookAt(vMatrix, this.camera_position, look_point, this.camera_up);
         mat4.multiply(this.pvMatrix, this.pvMatrix, pMatrix);
         mat4.multiply(this.pvMatrix, this.pvMatrix, vMatrix);
@@ -691,14 +693,35 @@ class Model {
 
 //---------------------------------------------- Actual Game
 
+function onMouseDown(event) {
+    function mouse_coord_within_canvas(e) {
+        return vec2.fromValues(e.pageX - missile_command.canvas_x, e.pageY - missile_command.canvas_y);
+    }
+    function canvas_coord_to_world_coord_on_2D_plane(position_vec2) {
+        var inverted_pvMatrix = mat4.create();
+        mat4.invert(inverted_pvMatrix, missile_command.pvMatrix);
+        var plane_z = vec3.transformMat4(vec3.create(), vec3.fromValues(0, 0, 0), inverted_pvMatrix)[2];
+        var x = position_vec2[0] / missile_command.gl_canvas.width;
+        var y = 1 - position_vec2[1] / missile_command.gl_canvas.height;
+        x = 0.5 + (x - 0.5) * (missile_command.plane_z - missile_command.camera_position[2]) / (plane_z - missile_command.camera_position[2]);
+        y = 0.5 + (y - 0.5) * (missile_command.plane_z - missile_command.camera_position[2]) / (plane_z - missile_command.camera_position[2]);
+        return vec2.fromValues(x, y);
+    }
+    missile_command.launch(canvas_coord_to_world_coord_on_2D_plane(mouse_coord_within_canvas(event)));
+}
+
 const missile_per_base = 10;
+const total_hostile_missile_number = 20;
 class Missile_Command extends Game_Base {
     constructor(framerate, plane_z) {
         super(framerate, plane_z);
         this.ground = null;
         this.missile_bases = new Array();
+        this.missile_base_survival = new Array();
         this.missile_base_missiles = new Array();
+        this.launched_missiles = new Array();
         this.hostile_missiles = new Array();
+        this.droped_missile_count = 0;
         this.area_of_game = null;
         this.debug = false;
     }
@@ -707,8 +730,11 @@ class Missile_Command extends Game_Base {
         super.load();
         this.ground = new Ground();
         this.missile_bases.push(new Missile_Base(1 / 3 * 0.1, 0, 1 / 3 * 0.8, 1 / 3 * 0.6 * 0.618 / 2));
+        this.missile_base_survival.push(true);
         this.missile_bases.push(new Missile_Base(1 / 3 * (1 + 0.1), 0, 1 / 3 * 0.8, 1 / 3 * 0.6 * 0.618 / 2));
+        this.missile_base_survival.push(true);
         this.missile_bases.push(new Missile_Base(1 / 3 * (2 + 0.1), 0, 1 / 3 * 0.8, 1 / 3 * 0.6 * 0.618 / 2));
+        this.missile_base_survival.push(true);
         for (var i = 0; i < this.missile_bases.length; i++) {
             this.missile_base_missiles.push(new Array());
             var x = this.missile_bases[i].position[0] + this.missile_bases[i].w * 0.2, y = this.missile_bases[i].position[1] + this.missile_bases[i].h * 0.95;
@@ -716,10 +742,25 @@ class Missile_Command extends Game_Base {
             for (var j = 0; j < missile_per_base; j++)
                 this.missile_base_missiles[i].push(new Missile(x + j * delta_x, y));
         }
+        this.droped_missile_count = 0;
         this.area_of_game = new AoG();
     }
 
+    deload() {
+        this.ground = null;
+        this.missile_bases = new Array();
+        this.missile_base_survival = new Array();
+        this.missile_base_missiles = new Array();
+        this.launched_missiles = new Array();
+        this.hostile_missiles = new Array();
+        this.droped_missile_count = 0;
+        this.area_of_game = null;
+        this.debug = false;
+    }
+
     update() {
+        if (Math.random() < 1 / (this.framerate * 5))
+            this.drop_hostile_missile();
         super.update();
         this.ground.update();
         for (var i = 0; i < this.missile_bases.length; i++)
@@ -727,6 +768,8 @@ class Missile_Command extends Game_Base {
         for (var i = 0; i < this.missile_base_missiles.length; i++)
             for (var j = 0; j < this.missile_base_missiles[i].length; j++)
                 this.missile_base_missiles[i][j].update();
+        for (var i = 0; i < this.launched_missiles.length; i++)
+            this.launched_missiles[i].update();
         for (var i = 0; i < this.hostile_missiles.length; i++)
             this.hostile_missiles[i].update();
         for (var i = 0; i < this.missile_base_missiles.length; i++)
@@ -735,12 +778,24 @@ class Missile_Command extends Game_Base {
                     this.missile_base_missiles[i].splice(j, 1); j--;
                     continue;
                 }
+        for (var i = 0; i < this.launched_missiles.length; i++)
+            if (this.launched_missiles[i].destroyed) {
+                this.launched_missiles.splice(i, 1); i--;
+                continue;
+            }
         for (var i = 0; i < this.hostile_missiles.length; i++)
             if (this.hostile_missiles[i].destroyed) {
                 this.hostile_missiles.splice(i, 1); i--;
                 continue;
             }
         if (this.debug) this.area_of_game.update();
+        if (this.survived_missile_base_count() == 0) {
+            alert("You lost");
+            this.restart_flag = true;
+        } else if (this.droped_missile_count >= total_hostile_missile_number && this.hostile_missiles.length == 0) {
+            alert("You Win");
+            this.restart_flag = true;
+        }
     }
 
     draw() {
@@ -751,9 +806,56 @@ class Missile_Command extends Game_Base {
         for (var i = 0; i < this.missile_base_missiles.length; i++)
             for (var j = 0; j < this.missile_base_missiles[i].length; j++)
                 this.missile_base_missiles[i][j].draw();
+        for (var i = 0; i < this.launched_missiles.length; i++)
+            this.launched_missiles[i].draw();
         for (var i = 0; i < this.hostile_missiles.length; i++)
             this.hostile_missiles[i].draw();
         if (this.debug) this.area_of_game.draw();
+    }
+
+    launch(position_vec2) {
+        var launched = false, t = this;
+        function try_base(index) {
+            for (var i = 0; i < t.missile_base_missiles[index].length; i++) {
+                var missile = t.missile_base_missiles[index][i]
+                if (missile.launch_target == null && (!missile.exploded)) {
+                    t.missile_base_missiles[index][i].launch(position_vec2);
+                    t.launched_missiles.push(t.missile_base_missiles[index].splice(i, 1)[0]);
+                    launched = true;
+                    break;
+                }
+            }
+        }
+        var base_index = Math.floor(position_vec2[0] / (1 / 3));
+        try_base(base_index);
+        if (!launched)
+            for (var i = 0; i < t.missile_base_missiles.length; i++) {
+                if (i == base_index)
+                    continue;
+                try_base(i);
+                if (launched)
+                    break;
+            }
+    }
+
+    survived_missile_base_count() {
+        var count = 0;
+        for (var i = 0; i < this.missile_base_survival.length; i++)
+            if (this.missile_base_survival[i])
+                count++;
+        return count;
+    }
+
+    drop_hostile_missile() {
+        if (this.droped_missile_count >= total_hostile_missile_number)
+            return;
+        var hostile_missile = new Hostile_Missile(-0.2 + 1.4 * Math.random(), 1.2);
+        var base_index = Math.floor(Math.random() / (1 / this.survived_missile_base_count()));
+        var target = vec2.fromValues(this.missile_bases[base_index].position[0] + this.missile_bases[base_index].w * 0.5, this.missile_bases[base_index].position[1] + this.missile_bases[base_index].h * 0.8);
+        hostile_missile.launch(target);
+        hostile_missile.target_base_index = base_index;
+        this.hostile_missiles.push(hostile_missile);
+        this.droped_missile_count++;
     }
 }
 
@@ -856,7 +958,8 @@ class Missile extends Game_Object {
 class Hostile_Missile extends Missile {
     constructor(x, y) {
         super(x, y);
-        this.speed = this.speed / 2;
+        this.speed /= 4;
+        this.target_base_index = null;
     }
 
     post_update() {
@@ -865,14 +968,29 @@ class Hostile_Missile extends Missile {
                 this.destroy();
         } else if (this.after_launch_move_vec2 != null) {
             var in_explosion_vicinity = false
-            //check if in vicinity
+            for (var i = 0; i < this.game.launched_missiles.length; i++) {
+                var missile = this.game.launched_missiles[i];
+                if (missile.exploded) {
+                    var delta = vec3.create(); vec3.subtract(delta, this.position, missile.position)
+                    delta = vec2.fromValues(delta[0], delta[1]);
+                    if (vec2.length(delta) < this.h * 1.5) {
+                        in_explosion_vicinity = true;
+                        break;
+                    }
+                }
+            }
             if (in_explosion_vicinity)
                 this.explode();
             else {
                 var delta = vec2.create(); vec2.subtract(delta, this.launch_target, vec2.fromValues(this.position[0], this.position[1]));
                 var delta_distance = vec2.length(delta);
-                if (delta_distance <= this.h * 1.1)
+                if (delta_distance <= this.h * 1.1) {
                     this.explode();
+                    for (var i = 0; i < this.game.missile_base_missiles[this.target_base_index].length; i++) {
+                        this.game.missile_base_missiles[this.target_base_index][i].explode();
+                        this.game.missile_base_survival[this.target_base_index] = false;
+                    }
+                }
             }
         }
     }
@@ -943,6 +1061,6 @@ class AoG extends Game_Object {
 //---------------------------------------------- Run
 
 var missile_command = new Missile_Command(60, 0.5);
-missile_command.frame_time_log = true;
+// missile_command.frame_time_log = true;
 // missile_command.debug = true;
 missile_command.start();
