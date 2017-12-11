@@ -866,7 +866,7 @@ class Missile_Base extends Game_Object {
 
     load_model() {
         this.model = Model.read_from_OBJ("missile base.obj");
-        this.model.texture_url = "grass-512.png";
+        this.model.texture_url = "dirt-512.png";
     }
 }
 
@@ -1009,12 +1009,12 @@ class Hostile_Missile extends Missile {
 class Ground extends Game_Object {
     constructor() {
         const width = 4;
-        super(-(width - 1) / 2, -0.0001, width, 0, missile_command);
+        super(-(width - 1) / 2, -0.0001, width, 0.1, missile_command);
     }
 
     load_model() {
         this.model = Model.read_from_OBJ("ground.obj");
-        this.model.texture_url = "grass-2048.png";
+        this.model.texture_url = "dirt-2048.png";
     }
 }
 
