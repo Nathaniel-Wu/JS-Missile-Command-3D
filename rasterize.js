@@ -743,6 +743,8 @@ class Missile_Command extends Game_Base {
         this.area_of_game = null;
         this.debug = false;
         this.score = 0;
+        this.UFO = null;
+        this.UFO_spawned = 0;
     }
 
     load() {
@@ -764,6 +766,8 @@ class Missile_Command extends Game_Base {
         this.droped_missile_count = 0;
         this.area_of_game = new AoG();
         this.score = 0;
+        this.UFO = null;
+        this.UFO_spawned = 0;
     }
 
     deload() {
@@ -778,6 +782,8 @@ class Missile_Command extends Game_Base {
         this.area_of_game = null;
         this.debug = false;
         this.score = 0;
+        this.UFO = null;
+        this.UFO_spawned = 0;
     }
 
     update() {
@@ -818,6 +824,13 @@ class Missile_Command extends Game_Base {
         }
         for (var i = 0; i < this.hostile_missiles.length; i++)
             this.hostile_missiles[i].update();
+        if (this.UFO != null)
+            this.UFO.update();
+        else if (this.UFO_spawned < 2 && Math.random() < (1 / (this.framerate * 10))) {
+            this.UFO = new UFO(0, 0.6, 0.1, 0.03);
+            this.UFO.update();
+            this.UFO_spawned++;
+        }
         for (var i = 0; i < this.missile_base_missiles.length; i++)
             for (var j = 0; j < this.missile_base_missiles[i].length; j++)
                 if (this.missile_base_missiles[i][j].destroyed) {
@@ -857,6 +870,8 @@ class Missile_Command extends Game_Base {
         for (var i = 0; i < this.hostile_missiles.length; i++)
             this.hostile_missiles[i].draw();
         if (this.debug) this.area_of_game.draw();
+        if (this.UFO != null)
+            this.UFO.draw();
         this.background_context.beginPath();
         this.background_context.font = "40px Helvetica";
         this.background_context.fillStyle = 'black';
@@ -1092,6 +1107,35 @@ class Ground extends Game_Object {
     }
 }
 
+class UFO extends Game_Object {
+    constructor(x, y, w, h) {
+        super(x, y, w, h, missile_command);
+        this.constant_move_vec2 = vec2.fromValues(0.1 / this.game.framerate, 0);
+    }
+
+    load_model() {
+        this.model = Model.read_from_OBJ("models/UFO.obj");
+        this.model.texture_url = "textures/UFO.jpg";
+    }
+
+    update() {
+        this.move(this.constant_move_vec2);
+        super.update();
+        for (var i = 0; i < this.game.launched_missiles.length; i++) {
+            var missile = this.game.launched_missiles[i];
+            if (missile.exploded) {
+                var delta = vec3.create(); vec3.subtract(delta, this.position, missile.position)
+                delta = vec2.fromValues(delta[0], delta[1]);
+                if (vec2.length(delta) < this.w * 1.5) {
+                    this.game.UFO = null;
+                    this.game.score += 10;
+                    break;
+                }
+            }
+        }
+    }
+}
+
 class AoG extends Game_Object {
     constructor() {
         super(0, 0, 1, 1, missile_command);
@@ -1135,6 +1179,6 @@ class AoG extends Game_Object {
 //---------------------------------------------- Run
 
 var missile_command = new Missile_Command(60, 0.5);
-missile_command.frame_time_log = true;
+// missile_command.frame_time_log = true;
 // missile_command.debug = true;
 missile_command.start();
