@@ -12,7 +12,7 @@ Safari (tested with 11.0.2), Chrome (tested with 63.0.3239.84) and Firefox (test
 
 However, CrossOrigin asset under **HTTPS** is only allowed in **Chrome** and **Firefox**, if you run the game in Safari, no texture can be loaded.
 
-#### Extra Credit Implemented###
+#### Extra Credit Implemented
 
 1. Descending missile split randomly at a certain rate when they are above certain height.
 2. Added missile explosion animation, and desending missile explodes all unlaunched missiles in a missile base.
