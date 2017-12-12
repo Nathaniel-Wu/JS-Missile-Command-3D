@@ -92,11 +92,11 @@ class Game_Base {
     }
 
     start() {
-        // try {
-        this.init();
-        this.load();
-        this.start_loop();
-        // } catch (e) { console.log(e); }
+        try {
+            this.init();
+            this.load();
+            this.start_loop();
+        } catch (e) { console.log(e); }
     }
 
     stop() {
@@ -354,7 +354,7 @@ class Game_Base {
         if (this.loop_handle)
             throw "Already in loop error";
         var t = this;
-        this.loop_handle = setInterval(function () { t.loop(); }, this.inter_frame);
+        this.loop_handle = setInterval(function () { t.loop(); }, this.frametime);
     }
 
     stop_loop() {
@@ -950,7 +950,7 @@ class Missile_Base extends Game_Object {
 class Missile extends Game_Object {
     constructor(x, y) {
         super(x, y, 0.0125, 0.05, missile_command);
-        this.speed = 0.2;
+        this.speed = 0.75;
         this.launch_target = null;
         this.after_launch_move_vec2 = null;
         this.exploded = false;
@@ -1009,7 +1009,7 @@ class Missile extends Game_Object {
         if (this.exploded)
             return;
         this.pre_explode();
-        var explode_ratio = Math.pow(2, 1 / (3 * this.game.framerate));
+        var explode_ratio = Math.pow(2, 1 / this.game.framerate);
         this.explode_scaler = vec3.fromValues(explode_ratio, explode_ratio, explode_ratio);
         this.launch_target = null;
         this.after_launch_move_vec2 = null;
@@ -1112,7 +1112,7 @@ class Ground extends Game_Object {
 class UFO extends Game_Object {
     constructor(x, y, w, h) {
         super(x, y, w, h, missile_command);
-        this.constant_move_vec2 = vec2.fromValues(0.1 / this.game.framerate, 0);
+        this.constant_move_vec2 = vec2.fromValues(1 / (2 * this.game.framerate), 0);
         this.exploded = false;
         this.explode_scaler = null;
     }
@@ -1153,7 +1153,7 @@ class UFO extends Game_Object {
             return;
         this.model = Model.read_from_OBJ("models/ball.obj");
         this.model.texture_url = "textures/blue.png";
-        var explode_ratio = Math.pow(2, 1 / (3 * this.game.framerate));
+        var explode_ratio = Math.pow(2, 1 / this.game.framerate);
         this.explode_scaler = vec3.fromValues(explode_ratio, explode_ratio, explode_ratio);
         this.h = this.w;
         this.fill_buffers(); this.attatch_texture(this.model.texture_url);
