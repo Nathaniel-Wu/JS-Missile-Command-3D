@@ -787,7 +787,7 @@ class Missile_Command extends Game_Base {
     }
 
     update() {
-        if (Math.random() < 1 / (this.framerate * 5))
+        if (Math.random() < 1 / (this.framerate * 2))
             this.drop_hostile_missile();
         super.update();
         this.ground.update();
@@ -798,7 +798,7 @@ class Missile_Command extends Game_Base {
                 this.missile_base_missiles[i][j].update();
         for (var i = 0; i < this.launched_missiles.length; i++)
             this.launched_missiles[i].update();
-        if (this.hostile_missiles.length > 0 && Math.random() < (1 / (this.framerate * 10))) {
+        if (this.hostile_missiles.length > 0 && Math.random() < (1 / (this.framerate * 8))) {
             var t = this;
             function random_index() { return Math.floor(Math.random() * (t.hostile_missiles.length - 1)); }
             function validate_index(index) { return (0.5 <= t.hostile_missiles[index].position[1]) && (t.hostile_missiles[index].position[1] <= 1.2) && (!t.hostile_missiles[index].exploded); }
